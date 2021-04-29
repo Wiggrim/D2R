@@ -178,16 +178,12 @@ int main( int argc, char** argv )
 
                 if( transformer.CalcAttitude( Ceb, Cov ) )
                 {
-                    // =============== Using the Attitude from UKF ===============
-                    Ceb = transformer.unscented_state_filter.cur_rot.toRotationMatrix();
-                    Cov = transformer.unscented_state_filter.covariance.block( 0, 0, 3, 3 );    // Generally roll & pitch are small, Cov -> Cov on Euler angle
-                    // =============== Using the Attitude from UKF ===============
                     Eigen::Matrix3d Cnb = Cen_m.transpose() * Ceb;
                     Eigen::Vector3d euler_angle;
                     Utility::Dcm2Euler( Cnb, euler_angle );
                     std::cout <<  "TOW : " << tow << std::endl << "Euler angle : " << euler_angle.transpose() \
                                                 << std::endl << "Covariance : " << Cov.diagonal().transpose() << std::endl;         
-                    std::cout << "Gyr Bias : " << transformer.state_filter.cur_gyr_bias.transpose() << std::endl;          
+                    std::cout << "Gyr Bias : " << transformer.unscented_state_filter.cur_gyr_bias.transpose() << std::endl;          
                     fout.precision(15);
                     fout << tow << ", " << euler_angle.x() << ", " << euler_angle.y() << ", " << euler_angle.z() \
                                                 << ", " << Cov(0,0) << ", " << Cov(1,1) << ", " << Cov(2,2) << std::endl;

@@ -206,7 +206,7 @@ namespace D2R
         output_sigma_points_delta_v.resize( 13 );
         for( unsigned int i = 0; i < 13; i++ )
         {
-            output_sigma_points_delta_v[i] = input_sigma_points_rot[i].toRotationMatrix() * (delta_v_b + gyr_delta_v * input_sigma_points_bias[i]);
+            output_sigma_points_delta_v[i] = input_sigma_points_rot[i].toRotationMatrix() * (delta_v_b + gyr_delta_v * (input_sigma_points_bias[i] - integration_ptr->linearized_bg));
             if( i == 12 )
             {
                 mean_delta_v_local += output_sigma_points_delta_v[i] / 3.;
@@ -308,7 +308,7 @@ namespace D2R
         for( unsigned int i = 0; i < 13; i++ )
         {
             output_sigma_points_delta_d.block( 0, i, sat_meas_num, 1 ) = los_mat * input_sigma_points_rot[i].toRotationMatrix() * \
-                                                                                                                                                ( delta_v_b + gyr_delta_v * input_sigma_points_bias[i] );
+                                                                                                                                                ( delta_v_b + gyr_delta_v * (input_sigma_points_bias[i] - integration_ptr->linearized_bg) );
             if( i != 12 ) delta_d_mean += output_sigma_points_delta_d.block( 0, i, sat_meas_num, 1 ) / 2. / (n+k);
             else delta_d_mean += output_sigma_points_delta_d.block( 0, i, sat_meas_num, 1 ) / 3.;
         }

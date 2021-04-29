@@ -44,8 +44,7 @@ namespace D2R
         unsigned int imu_size = imu_batches.size();
         Eigen::Vector3d acc0 = imu_batches[imu_size-1].acc;
         Eigen::Vector3d gyr0 = imu_batches[imu_size-1].gyr;
-        // this->integration_cur_ptr = new IntegrationBase( acc0, gyr0, Eigen::Vector3d(0., 0., 0.), Eigen::Vector3d(0., 0., 0.) );
-
+        
         this->gnss_batches_pre = gnss_batches;
         this->imu_batches_pre = imu_batches;
 
@@ -72,14 +71,13 @@ namespace D2R
         unsigned int imu_size_pre = this->imu_batches_pre.size();
         Eigen::Vector3d acc0 = imu_batches_pre[imu_size_pre-1].acc;
         Eigen::Vector3d gyr0 = imu_batches_pre[imu_size_pre-1].gyr;
-        this->integration_cur_ptr = new IntegrationBase( acc0, gyr0, Eigen::Vector3d(0., 0., 0.), Eigen::Vector3d(0., 0., 0.) );
+        this->integration_cur_ptr = new IntegrationBase( acc0, gyr0, Eigen::Vector3d(0., 0., 0.), Eigen::Vector3d( this->unscented_state_filter.cur_gyr_bias ));
 
         unsigned int imu_size = imu_batches.size();
         for( unsigned int i = 0; i < imu_size; i++ )
         {
             this->integration_cur_ptr->push_back( imu_batches[i].dt, imu_batches[i].acc, imu_batches[i].gyr );
         }
-        std::cout << "IMU Integration Length : " << this->integration_cur_ptr->sum_dt << std::endl;
 
         if( this->integration_btw.size() == this->win_size )
         {
@@ -104,7 +102,6 @@ namespace D2R
             GNSSBatches::iterator it = std::find( gnss_batches_pre.begin(), gnss_batches_pre.end(), sat_data );
             if( it != gnss_batches_pre.end() )
             {
-                //std::cout << "Find Satellite Number Matches : " << sat_data.satNum << ", " << it->satNum << std::endl;
                 Eigen::Vector3d sat_pos_pre = it->satPos;
                 Eigen::Vector3d sat_pos_cur = sat_data.satPos;
                 Eigen::Vector3d sat_vel_pre = it->satVel;
@@ -122,7 +119,6 @@ namespace D2R
                 dops.push_back( delta_dop );
             }
         }
-        //std::cout << "Valid Satellite Number : " << dops.size() << std::endl;
 
         if( delta_dop_btw.size() == this->win_size )
         {
@@ -195,8 +191,6 @@ namespace D2R
             //     unscented_state_filter.PushBack( imu_batches );
             // }            
         }
-
-        std::cout << "Bias from UKF : " << unscented_state_filter.cur_gyr_bias.transpose() << std::endl;
 
         imu_batches_pre = imu_batches;
         gnss_batches_pre = gnss_batches;
@@ -288,7 +282,6 @@ namespace D2R
                 delta_v_ecef = earth_rot_q.toRotationMatrix() * los_matrix_svd.solve( delta_d_vector );
                 
                 valid_win = true;
-                //std::cout << "Solve one delta_v : \n" << delta_v_ecef.transpose() << std::endl; 
             }
             else
             {
@@ -297,12 +290,11 @@ namespace D2R
 
             delta_v_body = rot_btw.toRotationMatrix() * integration_in_win_ptr->delta_v;
             rot_btw = rot_btw * integration_in_win_ptr->delta_q;
-            // delta_v_b[i] = delta_v_body;
 
             
 
             if( valid_win == true )
-            {//std::cout << "Integrated delta_v : \n" << delta_v_body.transpose() << std::endl;
+            {
                 delta_v_ecef = delta_v_ecef / delta_v_ecef.norm() * delta_v_body.norm();
                 cov += delta_v_body * delta_v_body.transpose();
                 ex_cov += delta_v_body * delta_v_ecef.transpose();
@@ -351,38 +343,25 @@ namespace D2R
             Ceb = earth_rot_q.toRotationMatrix().transpose() * Ceb * rot_btw.toRotationMatrix();
             CalcAccuracy( Ceb, Cov );
 
-            // EKF as a baseline
-            if( state_filter.initial_flag == false )
-            {
-                Eigen::Quaterniond qeb( Ceb );
-                state_filter.Initialize( qeb, Cov, imu_batches_pre.back().acc, imu_batches_pre.back().gyr );
-            }
-            else
-            {
-                state_filter.Update( delta_dop_in_win, integration_in_win_ptr );
-                state_filter.PushBack( imu_batches_pre );
-
-                Ceb = state_filter.cur_rot.toRotationMatrix();
-                Cov = state_filter.covariance.block<3,3>( 0, 0 );
-            }
-
             if( unscented_state_filter.initial_flag == false )
             {
                 Eigen::Quaterniond qeb( Ceb );
                 unscented_state_filter.Initialize( qeb, Cov, imu_batches_pre.back().acc, imu_batches_pre.back().gyr );
+            }
+            else
+            {
+                Ceb = unscented_state_filter.cur_rot.toRotationMatrix();
+                Cov = unscented_state_filter.covariance.block<3,3>( 0, 0 );
             }
 
             return true;
         }
         else
         {
-            if( state_filter.initial_flag == true )
+            if( unscented_state_filter.initial_flag == true )
             {
-                state_filter.Update( delta_dop_in_win, integration_in_win_ptr );
-                state_filter.PushBack( imu_batches_pre );
-
-                Ceb = state_filter.cur_rot.toRotationMatrix();
-                Cov = state_filter.covariance.block<3,3>( 0, 0 );
+                Ceb = unscented_state_filter.cur_rot.toRotationMatrix();
+                Cov = unscented_state_filter.covariance.block<3,3>( 0, 0 );
 
                 return true;
             }
@@ -540,7 +519,9 @@ namespace D2R
         Eigen::MatrixXd cov_in = delta_v_delta_d.block(0, 0, valid_win_num*3, total_los_num) * cov_delta_d * delta_v_delta_d.block(0, 0, valid_win_num*3, total_los_num).transpose() + \
                                                     sort_mat * converse * ( cov_concate_delta_v + gyr_concate_delta_v*Eigen::Matrix3d::Identity()*gyr_concate_delta_v.transpose()*INIT_GYR_STD * INIT_GYR_STD + \
                                                     acc_concate_delta_v*Eigen::Matrix3d::Identity()*acc_concate_delta_v.transpose()*INIT_ACC_STD * INIT_ACC_STD ) * converse.transpose() * sort_mat.transpose();
-        Cov = ( H.transpose() * sort_mat.transpose() * cov_in.inverse() * sort_mat * H ).inverse();
+        Eigen::MatrixXd H_inverse = ( ( sort_mat * H ).transpose() * sort_mat * H ).inverse() * (sort_mat * H).transpose();
+        
+        Cov = H_inverse * cov_in * H_inverse.transpose();
 
         return true;
     }

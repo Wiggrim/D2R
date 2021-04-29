@@ -1,5 +1,5 @@
 # Doppler2Rotation
-An algorithm transforming carrier Doppler & IMU measurements to attitude of the vehicle. Corresponding article is under peer review.
+An algorithm transforming carrier Doppler & IMU measurements to attitude of the vehicle.
 
 ## Features
 Being able to work with as few as three satellites.
